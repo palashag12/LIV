@@ -1,0 +1,2 @@
+- training=finetune
+- dataset=LIBERO10/_pick_up_the_book_and_place_it_in_the_back_compartment_of_the_caddy_demo.hdf5_AGENTVIEW.yaml

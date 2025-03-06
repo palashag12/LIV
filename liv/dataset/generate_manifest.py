@@ -5,7 +5,7 @@ from tqdm import tqdm
 import os
 
 # TODO: replace with the absolute path of dataset!
-data_path = "/home/jasonyma/liv/liv/dataset/realrobot"
+data_path = "/home/pa1077/LIBERO/libero/datasets/libero_10/KITCHEN_SCENE4_put_the_black_bowl_in_the_bottom_drawer_of_the_cabinet_and_close_it_demo/AGENTVIEW"
 trajs = glob.glob(data_path + "/*/")
 
 manifest = {"index": [], "directory": [], "num_frames": [], "text": []}

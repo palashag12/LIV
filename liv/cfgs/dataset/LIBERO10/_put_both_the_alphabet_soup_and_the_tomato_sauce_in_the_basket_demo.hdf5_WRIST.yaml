@@ -1,0 +1,7 @@
+# @package _global_
+dataset: _put_both_the_alphabet_soup_and_the_tomato_sauce_in_the_basket_demo.hdf5_WRIST
+datapath_train: /home/pa1077/LIBERO/libero/datasets/libero_10/LIVING_ROOM_SCENE2_put_both_the_alphabet_soup_and_the_tomato_sauce_in_the_basket_demo/WRIST
+wandbproject: _put_both_the_alphabet_soup_and_the_tomato_sauce_in_the_basket_demo.hdf5_WRIST
+hydra:
+  job:
+    name: train_liv__put_both_the_alphabet_soup_and_the_tomato_sauce_in_the_basket_demo.hdf5_WRIST

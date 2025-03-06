@@ -1,0 +1,8 @@
+# @package _global_
+dataset: _put_both_the_cream_cheese_box_and_the_butter_in_the_basket_demo.hdf5_AGENTVIEW
+datapath_train: /home/pa1077/LIBERO/libero/datasets/libero_10/LIVING_ROOM_SCENE2_put_both_the_cream_cheese_box_and_the_butter_in_the_basket_demo/AGENTVIEW
+hdf5_train_file: /home/pa1077/LIBERO/libero/datasets/libero_10/LIVING_ROOM_SCENE2_put_both_the_cream_cheese_box_and_the_butter_in_the_basket_demo.hdf5
+wandbproject: _put_both_the_cream_cheese_box_and_the_butter_in_the_basket_demo.hdf5_AGENTVIEW
+hydra:
+  job:
+    name: _put_both_the_cream_cheese_box_and_the_butter_in_the_basket_demo.hdf5_AGENTVIEW

@@ -1,0 +1,8 @@
+# @package _global_
+dataset: _put_both_moka_pots_on_the_stove_demo.hdf5_AGENTVIEW
+datapath_train: /home/pa1077/LIBERO/libero/datasets/libero_10/KITCHEN_SCENE8_put_both_moka_pots_on_the_stove_demo/AGENTVIEW
+hdf5_train_file: /home/pa1077/LIBERO/libero/datasets/libero_10/KITCHEN_SCENE8_put_both_moka_pots_on_the_stove_demo.hdf5
+wandbproject: _put_both_moka_pots_on_the_stove_demo.hdf5_AGENTVIEW
+hydra:
+  job:
+    name: _put_both_moka_pots_on_the_stove_demo.hdf5_AGENTVIEW

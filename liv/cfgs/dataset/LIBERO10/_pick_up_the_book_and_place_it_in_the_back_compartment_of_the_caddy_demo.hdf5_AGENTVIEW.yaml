@@ -1,0 +1,8 @@
+# @package _global_
+dataset: _pick_up_the_book_and_place_it_in_the_back_compartment_of_the_caddy_demo.hdf5_AGENTVIEW
+datapath_train: /home/pa1077/LIBERO/libero/datasets/libero_10/STUDY_SCENE1_pick_up_the_book_and_place_it_in_the_back_compartment_of_the_caddy_demo/AGENTVIEW
+hdf5_train_file: /home/pa1077/LIBERO/libero/datasets/libero_10/STUDY_SCENE1_pick_up_the_book_and_place_it_in_the_back_compartment_of_the_caddy_demo.hdf5
+wandbproject: _pick_up_the_book_and_place_it_in_the_back_compartment_of_the_caddy_demo.hdf5_AGENTVIEW
+hydra:
+  job:
+    name: _pick_up_the_book_and_place_it_in_the_back_compartment_of_the_caddy_demo.hdf5_AGENTVIEW

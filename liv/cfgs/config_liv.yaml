@@ -1,7 +1,7 @@
 defaults:
   - _self_
   - training: finetune
-  - dataset: realrobot
+  - dataset: test
   - override hydra/launcher:  local
   - override hydra/output:  local
 

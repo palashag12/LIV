@@ -1,0 +1,2 @@
+- training=finetune
+- dataset=LIBERO10/_put_the_yellow_and_white_mug_in_the_microwave_and_close_it_demo.hdf5_AGENTVIEW

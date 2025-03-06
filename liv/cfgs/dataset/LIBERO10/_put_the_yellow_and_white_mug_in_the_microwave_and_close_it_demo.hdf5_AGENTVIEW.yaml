@@ -1,0 +1,8 @@
+# @package _global_
+dataset: _put_the_yellow_and_white_mug_in_the_microwave_and_close_it_demo.hdf5_AGENTVIEW
+datapath_train: /home/pa1077/LIBERO/libero/datasets/libero_10/KITCHEN_SCENE6_put_the_yellow_and_white_mug_in_the_microwave_and_close_it_demo/AGENTVIEW
+hdf5_train_file: /home/pa1077/LIBERO/libero/datasets/libero_10/KITCHEN_SCENE6_put_the_yellow_and_white_mug_in_the_microwave_and_close_it_demo.hdf5
+wandbproject: _put_the_yellow_and_white_mug_in_the_microwave_and_close_it_demo.hdf5_AGENTVIEW
+hydra:
+  job:
+    name: _put_the_yellow_and_white_mug_in_the_microwave_and_close_it_demo.hdf5_AGENTVIEW

@@ -1,0 +1,7 @@
+# @package _global_
+dataset: _turn_on_the_stove_and_put_the_moka_pot_on_it_demo.hdf5_WRIST
+datapath_train: /home/pa1077/LIBERO/libero/datasets/libero_10/KITCHEN_SCENE3_turn_on_the_stove_and_put_the_moka_pot_on_it_demo/WRIST
+wandbproject: _turn_on_the_stove_and_put_the_moka_pot_on_it_demo.hdf5_WRIST
+hydra:
+  job:
+    name: train_liv__turn_on_the_stove_and_put_the_moka_pot_on_it_demo.hdf5_WRIST

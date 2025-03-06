@@ -15,7 +15,13 @@ from matplotlib.animation import FuncAnimation, PillowWriter
 import numpy as np
 import pandas as pd 
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torchvision
 import torchvision.transforms as T
+from einops import rearrange, repeat
+from einops.layers.torch import Rearrange
+
 import time
 
 from liv import load_liv
@@ -25,6 +31,39 @@ from liv.utils.data_loaders import LIVBuffer
 from liv.utils.logger import Logger
 from liv.utils.plotter import plot_reward_curves
 
+
+
+def plot_reward_curves(
+    manifest, tasks, load_video, encoder_model, fig_filename_prefix, animated=False, num_vid=5
+):
+    for task in tasks:
+        try:
+            videos = manifest[manifest["text"] == task]
+        except:
+            videos  = manifest[manifest["narration"] == task]
+        for i in range(num_vid):
+            m = videos.iloc[i]
+            imgs = load_video(m) 
+            fig_filename = f"{fig_filename_prefix}_{task}_{i}".replace(" ", "-")
+            distances_cur_img, distances_cur_text = calculate_distances(
+                encoder_model, imgs, task
+            )
+            plot_rewards(
+                distances_cur_img,
+                distances_cur_text,
+                imgs,
+                task,
+                fig_filename,
+                animated=animated,
+            )
+
+
+
+
+
+
+
+
 def make_network(cfg):
     model =  hydra.utils.instantiate(cfg)
     print("Let's use", torch.cuda.device_count(), "GPUs!")
@@ -32,8 +71,65 @@ def make_network(cfg):
     if cfg.device == "cpu":
         model = model.module.to(cfg.device)
     return model
+class PerturbationAttention:
+    """
+    See https://arxiv.org/pdf/1711.00138.pdf for perturbation-based visualization
+    for understanding a control agent.
+    """
 
+    def __init__(self, model, image_size=[128, 128], patch_size=[16, 16], device="cpu"):
 
+        self.model = model
+        self.patch_size = patch_size
+        H, W = image_size
+        num_patches = (H * W) // np.prod(patch_size)
+        # pre-compute mask
+        h, w = patch_size
+        nh, nw = H // h, W // w
+        mask = (
+            torch.eye(num_patches)
+            .view(num_patches, num_patches, 1, 1)
+            .repeat(1, 1, patch_size[0], patch_size[1])
+        )  # (np, np, h, w)
+        mask = rearrange(
+            mask.view(num_patches, nh, nw, h, w), "a b c d e -> a (b d) (c e)"
+        )  # (np, H, W)
+        self.mask = mask.to(device).view(1, num_patches, 1, H, W)
+        self.num_patches = num_patches
+        self.H, self.W = H, W
+        self.nh, self.nw = nh, nw
+
+    def __call__(self, rgb):
+        #print("RGB")
+        #print(rgb)
+        # = data["obs"]["agentview_rgb"]  # (B, C, H, W)
+        B, C, H, W = rgb.shape
+
+        rgb_ = rgb.unsqueeze(1).repeat(1, self.num_patches, 1, 1, 1)  # (B, np, C, H, W)
+        rgb_mean = rgb.mean([2, 3], keepdims=True).unsqueeze(1)  # (B, 1, C, 1, 1)
+        rgb_new = (rgb_mean * self.mask) + (1 - self.mask) * rgb_  # (B, np, C, H, W)
+        rgb_stack = torch.cat([rgb.unsqueeze(1), rgb_new], 1)  # (B, 1+np, C, H, W)
+
+        rgb_stack = rearrange(rgb_stack, "b n c h w -> (b n) c h w")
+        res = self.model(rgb_stack, modality="vision").view(B, self.num_patches + 1, -1)  # (B, 1+np, E)
+        
+        base = res[:, 0].view(B, 1, -1)
+        #print("BASE")
+        #print(base)
+        others = res[:, 1:].view(B, self.num_patches, -1)
+        #print("OTHERS")
+        #print(others)
+        attn = F.softmax((others - base).pow(2).sum(-1), -1)  # (B, num_patches)
+        #print("ATTN")
+        #print(attn)
+        attn_ = attn.view(B, 1, self.nh, self.nw)
+        attn_ = (
+            F.interpolate(attn_, size=(self.H, self.W), mode="bilinear")
+            .detach()
+            .cpu()
+            .numpy()
+        )
+        return attn_
 
 class Workspace:
     def __init__(self, cfg):
@@ -133,12 +229,13 @@ class Workspace:
         except:
             print("Warning: No global step found")
 
-    def generate_reward_curves(self):
-        #print("HI")
+    def generate_saliency_map(self):
         self.model.eval()
+        print("HI")
         os.makedirs(f"{self.work_dir}/reward_curves", exist_ok=True)
         transform = T.Compose([T.ToTensor()])
-       
+        
+
         if self.cfg.dataset not in ["epickitchen"]:
             manifest = pd.read_csv(os.path.join(self.cfg.datapath_train, "manifest.csv"))
             tasks = manifest["text"].unique()
@@ -163,8 +260,7 @@ class Workspace:
             def load_video(m):
                 imgs_tensor = []
                 vid = m["directory"]
-                print(m["directory"])
-                for index in range(m["num_frames"]):
+                for index in range(1):
                     try:
                         img = Image.open(f"{vid}/{index}.png")
                     except:
@@ -172,33 +268,46 @@ class Workspace:
                     imgs_tensor.append(transform(img))
                 imgs_tensor = torch.stack(imgs_tensor)
                 return imgs_tensor
-
-        plot_reward_curves(
-            manifest,
-            tasks,
-            load_video,
-            self.model,
-            fig_filename,
-            animated=self.cfg.animate,
-        )
-        self.model.train()
+            
+            
+            
+            for task in tasks:
+                try:
+                    videos = manifest[manifest["text"] == task]
+                except:
+                    videos  = manifest[manifest["narration"] == task]
+                FA = PerturbationAttention(self.model)
+                for i in range(len(videos)):
+                    m = videos.iloc[i]
+                    imgs = load_video(m)
+                    for j in range(len(imgs)):
+                       
+                       #print(FA.__call__(imgs)[0])
+                       img = Image.fromarray(np.asarray(torch.tensor(FA.__call__(imgs)[j]).view(128, 128) * 255).astype(np.uint8))
+                       img.save("/home/pa1077/LIV/liv/" + str(j) + ".png")
+                    
+                
+                     
+                    
+                    
+                    
 
 
 @hydra.main(config_path='cfgs', config_name='config_liv')
 def main(cfg):
-    from liv.train_liv import Workspace as W
     root_dir = Path.cwd()
-    workspace = W(cfg)
+    workspace = Workspace(cfg)
 
     snapshot = root_dir / 'snapshot.pt'
     if snapshot.exists():
         print(f'resuming: {snapshot}')
         workspace.load_snapshot(snapshot)
-
+    print("TEST") 
     if not cfg.eval:
         workspace.train()
     else:
-        workspace.generate_reward_curves()
+        print("TESTB")
+        workspace.generate_saliency_map()
 
 if __name__ == '__main__':
     main()
