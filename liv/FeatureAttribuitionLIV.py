@@ -1,5 +1,6 @@
 import warnings
 warnings.filterwarnings('ignore', category=DeprecationWarning)
+import h5py
 
 import os
 os.environ['MKL_SERVICE_FORCE_INTEL'] = '1'
@@ -12,6 +13,8 @@ import glob
 import hydra
 from matplotlib import pyplot as plt 
 from matplotlib.animation import FuncAnimation, PillowWriter
+from matplotlib.colors import LinearSegmentedColormap
+import matplotlib.cm as cm
 import numpy as np
 import pandas as pd 
 import torch
@@ -21,9 +24,9 @@ import torchvision
 import torchvision.transforms as T
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
-
+import cv2
 import time
-
+from captum.attr import visualization as viz
 from liv import load_liv
 from liv.trainer import Trainer
 from liv.utils import utils
@@ -31,6 +34,82 @@ from liv.utils.data_loaders import LIVBuffer
 from liv.utils.logger import Logger
 from liv.utils.plotter import plot_reward_curves
 
+import cv2
+from captum.attr import IntegratedGradients
+from torchvision import transforms
+
+
+def apply_integrated_gradients(model, image, baseline=None, steps=50):
+    """
+    Apply Integrated Gradients on a PyTorch model.
+    :param model: Pretrained PyTorch model returning a single scalar
+    :param image: Input image as a PyTorch tensor
+    :param baseline: Baseline image (default: black image)
+    :param steps: Number of steps for IG computation
+    :return: Colored heatmap as a NumPy array
+    """
+    model.eval()
+    device = next(model.parameters()).device
+    image = image.unsqueeze(0).to(device)   # Add batch dimension
+    image.requires_grad = True
+
+    if baseline is None:
+        baseline = torch.zeros_like(image)
+
+    ig = IntegratedGradients(model)
+    attr, _ = ig.attribute(image, baselines=baseline, return_convergence_delta=True, n_steps=steps)
+    transposed_attr = np.transpose(attr.squeeze().cpu().detach().numpy(), (1,2,0))
+    transposed_image = np.transpose(image.squeeze().cpu().detach().numpy(), (1,2,0))
+    #attr = attr.squeeze().detach().cpu().numpy()
+
+    # Aggregate across color channels using absolute sum
+    default_cmap = LinearSegmentedColormap.from_list('custom blue', 
+                                                 [(0, '#ffffff'),
+                                                  (0.25, '#000000'),
+                                                  (1, '#000000')], N=256)
+
+    _ = viz.visualize_image_attr(transposed_attr,
+                             transposed_image,
+                             method='heat_map',
+                             cmap=default_cmap,
+                             show_colorbar=True,
+                             sign='positive',
+                             outlier_perc=1)
+    return _ 
+   
+def visualize_attributions(input_tensor, attributions, figsize=(10, 5)):
+    """Helper function to display attributions on the input tensor."""
+    # Display the input
+    default_cmap = LinearSegmentedColormap.from_list('custom blue', 
+                                                 [(0, '#ffffff'),
+                                                  (0.25, '#000000'),
+                                                  (1, '#000000')], N=256)
+
+    _ = viz.visualize_image_attr(transposed_attr_ig,
+                             transposed_image,
+                             method='heat_map',
+                             cmap=default_cmap,
+                             show_colorbar=True,
+                             sign='positive',
+                             outlier_perc=1)
+
+def overlay_heatmap_on_image(heatmap_colored, original_image_tensor, alpha=0.5):
+    """
+    Overlay the colored heatmap on the original image.
+    :param heatmap_colored: Heatmap as a colored NumPy array (H x W x 3)
+    :param original_image_tensor: Original image as a PyTorch tensor (C x H x W)
+    :param alpha: Blending factor for heatmap
+    :return: Overlayed image as a NumPy array
+    """
+    original_image_np = original_image_tensor.permute(1, 2, 0).cpu().numpy()
+    original_image_np = (original_image_np - original_image_np.min()) / (original_image_np.max() - original_image_np.min())
+    original_image_np = np.uint8(255 * original_image_np)
+
+    # Resize heatmap to match original image dimensions
+    heatmap_colored = cv2.resize(heatmap_colored, (original_image_np.shape[1], original_image_np.shape[0]))
+
+    overlayed_image = cv2.addWeighted(original_image_np, 1 - alpha, heatmap_colored, alpha, 0)
+    return overlayed_image, heatmap_colored
 
 
 def plot_reward_curves(
@@ -71,6 +150,27 @@ def make_network(cfg):
     if cfg.device == "cpu":
         model = model.module.to(cfg.device)
     return model
+def wrap_with_l2_norm(model: nn.Module) -> nn.Module:
+    """
+    Wraps the given model so that it outputs the L2 norm of its original output.
+
+    Args:
+        model (nn.Module): The original PyTorch model.
+
+    Returns:
+        nn.Module: A new model that outputs the L2 norm of the original model's output.
+    """
+    class L2NormWrapper(nn.Module):
+        def __init__(self, base_model):
+            super().__init__()
+            self.base_model = base_model
+
+        def forward(self, x):
+            output = self.base_model(x)
+            l2_norm = torch.norm(output, p=2, dim=1, keepdim=True)  # dim=1 assumes output is (batch_size, features)
+            return l2_norm
+
+    return L2NormWrapper(model)    
 class PerturbationAttention:
     """
     See https://arxiv.org/pdf/1711.00138.pdf for perturbation-based visualization
@@ -260,7 +360,7 @@ class Workspace:
             def load_video(m):
                 imgs_tensor = []
                 vid = m["directory"]
-                for index in range(1):
+                for index in range(m["num_frames"]):
                     try:
                         img = Image.open(f"{vid}/{index}.png")
                     except:
@@ -276,15 +376,52 @@ class Workspace:
                     videos = manifest[manifest["text"] == task]
                 except:
                     videos  = manifest[manifest["narration"] == task]
-                FA = PerturbationAttention(self.model)
+                #FA = PerturbationAttention(self.model)
+                
                 for i in range(len(videos)):
+                    f = h5py.File('/home/pa1077/LIBERO/libero/datasets/libero_object/pick_up_the_cream_cheese_and_place_it_in_the_basket_demo_copy.hdf5' , "r+")
                     m = videos.iloc[i]
-                    imgs = load_video(m)
-                    for j in range(len(imgs)):
+                   
+                    vid = m["directory"]
+                    print(vid)
+                    print("demo_" + str(i))
+                    demo=f["data"]["demo_" + str(i)]
+                    #hdf5_path
+                    #imgs = load_video(m)
+                    for j in range(90):
+                    #for j in range(m['num_frames']):
+                        
+                        #print(f"{vid}/{j}.png")
+                        img = Image.open(f"{vid}/{j}.png")
+                        #img = Image.open('/home/pa1077/LIBERO/libero/datasets/libero_object/pick_up_the_salad_dressing_and_place_it_in_the_basket_demo/AGENTVIEW/demo_0/0.png')
+                        #img = np.asarray(torch.tensor(FA.__call__(transform(img).unsqueeze(0))).view(128, 128))
+                        #img_b = np.stack((img,) * 3, axis=-1)
+                        _ = apply_integrated_gradients(wrap_with_l2_norm(self.model), transform(img))
+                        _[0].savefig("/home/pa1077/LIV/liv/" + "corrected_FA" + str(j) + ".png")
+                       
+                        #img = np.asarray(torch.tensor(FA.__call__(transform(img).unsqueeze(0)).view(128, 128) * 255)).astype(np.uint8)
+                      
                        
                        #print(FA.__call__(imgs)[0])
-                       img = Image.fromarray(np.asarray(torch.tensor(FA.__call__(imgs)[j]).view(128, 128) * 255).astype(np.uint8))
-                       img.save("/home/pa1077/LIV/liv/" + str(j) + ".png")
+                       
+
+                        #print("RENDE")
+                        if "AGENTVIEW" in vid and j < 20:
+                            #image= Image.fromarray(overlay_heatmap_on_image(ht_mp, transform(img))[0])
+                            #image_b= Image.fromarray(overlay_heatmap_on_image(ht_mp, transform(img))[1])
+                            #image.save("/home/pa1077/LIV/liv/trialNSUM_OVERLAY" + str(j) + ".png")
+                            #image_b.save("/home/pa1077/LIV/liv/ONLY_OVERLAY" + str(j) + ".png")
+                            #visualize_attributions(transform(img), attributions)
+                            print("VISUALIZE")
+
+                            #demo['obs']['agentview_rgb'][j] = ht_mp
+                        else:
+                            print("DONE")
+                            #demo['obs']['eye_in_hand_rgb'][j] = ht_mp
+
+
+                        #img = Image.fromarray(np.asarray(torch.tensor(FA.__call__(imgs)[j]).view(128, 128) * 255).astype(np.uint8))
+                        #img.save("/home/pa1077/LIV/liv/" + str(j) + ".png")
                     
                 
                      

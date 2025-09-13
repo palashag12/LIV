@@ -9,10 +9,10 @@ def run_training_script(folder_path):
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)
         if os.path.isfile(file_path):  # Ensure it's a file
-            command = ["python", "train_liv.py", "training=finetune", f"dataset=LIBERO10/{filename}"]
+            command = ["python", "train_liv.py", "training=finetune", f"dataset=libero_object/{filename}"]
             print(f"Running: {' '.join(command)}")
             subprocess.run(command)
 
 if __name__ == "__main__":
-    folder_path = '/home/pa1077/LIV/liv/cfgs/dataset/LIBERO10'  # Change this to the actual folder path
+    folder_path = '/home/pa1077/LIV/liv/cfgs/dataset/libero_object'  # Change this to the actual folder path
     run_training_script(folder_path)

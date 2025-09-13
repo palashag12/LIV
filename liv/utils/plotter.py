@@ -112,7 +112,11 @@ def plot_rewards(distances_cur_img, distances_cur_text, imgs, task, fig_filename
 
 def calculate_distances(encoder_model, imgs, task):
     with torch.no_grad():
+        #print("HERE WE ARE")
+        #torch.cuda.synchronize()
         embeddings = encoder_model(input=imgs.cuda(), modality="vision")
+        #torch.cuda.synchronize()
+        #print("HMMMMM")
         goal_embedding_img = embeddings[-1]
         token = clip.tokenize([task])
         goal_embedding_text = encoder_model(input=token, modality="text")
@@ -149,9 +153,11 @@ def plot_reward_curves(
             m = videos.iloc[i]
             imgs = load_video(m) 
             fig_filename = f"{fig_filename_prefix}_{task}_{i}".replace(" ", "-")
+            #print("SDFAKHLW")
             distances_cur_img, distances_cur_text = calculate_distances(
                 encoder_model, imgs, task
             )
+            #print("SDAJFALme exit")
             plot_rewards(
                 distances_cur_img,
                 distances_cur_text,

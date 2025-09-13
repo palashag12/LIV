@@ -17,7 +17,7 @@ import pandas as pd
 import torch
 import torchvision.transforms as T
 import time
-
+import torch.distributed as dist
 from liv import load_liv
 from liv.trainer import Trainer
 from liv.utils import utils
@@ -25,10 +25,20 @@ from liv.utils.data_loaders import LIVBuffer
 from liv.utils.logger import Logger
 from liv.utils.plotter import plot_reward_curves
 
+def init_process(rank, world_size):
+    os.environ["MASTER_ADDR"] = 'localhost'
+    os.environ["MASTER_PORT"] = '59207'
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+
+
 def make_network(cfg):
     model =  hydra.utils.instantiate(cfg)
+    #torch.cuda.empty_cache() # Clear GPU cache
     print("Let's use", torch.cuda.device_count(), "GPUs!")
-    model = torch.nn.DataParallel(model)
+
+    #init_process(0, torch.cuda.device_count())
+    init_process(1, torch.cuda.device_count())
+    model = torch.nn.parallel.DistributedDataParallel(model)
     if cfg.device == "cpu":
         model = model.module.to(cfg.device)
     return model
@@ -92,15 +102,21 @@ class Workspace:
         ## Training Loop
         print("Begin Training")
         while train_until_step(self.global_step):
+            #print("TEST")
             if eval_every_step(self.global_step):
+                #print("ENTERED")
                 self.generate_reward_curves()
+                #print("ENTER AGAIN")
                 self.save_snapshot()
-            
+
+            #print("HELLO AGAIN")
             ## Sample Batch
             t0 = time.time()
+            
             batch = next(self.train_loader)
             t1 = time.time()
             metrics, st = trainer.update(self.model, batch, self.global_step)
+            #print("HELLO AGAIN C")
             t2 = time.time()
             if self.logging:
                 self.logger.log_metrics(metrics, self.global_frame, ty='train')
@@ -163,7 +179,7 @@ class Workspace:
             def load_video(m):
                 imgs_tensor = []
                 vid = m["directory"]
-                print(m["directory"])
+                #print(m["directory"])
                 for index in range(m["num_frames"]):
                     try:
                         img = Image.open(f"{vid}/{index}.png")
@@ -172,7 +188,7 @@ class Workspace:
                     imgs_tensor.append(transform(img))
                 imgs_tensor = torch.stack(imgs_tensor)
                 return imgs_tensor
-
+        print("SFDAF")
         plot_reward_curves(
             manifest,
             tasks,
@@ -181,6 +197,7 @@ class Workspace:
             fig_filename,
             animated=self.cfg.animate,
         )
+        #print("SFDAF")
         self.model.train()
 
 
@@ -196,7 +213,8 @@ def main(cfg):
         workspace.load_snapshot(snapshot)
 
     if not cfg.eval:
-        workspace.train()
+        torch.multiprocessing.spawn(workspace.train,args = (),  nprocs=2, join=True)
+        #workspace.train()
     else:
         workspace.generate_reward_curves()
 
